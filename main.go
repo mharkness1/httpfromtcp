@@ -4,21 +4,34 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"net"
 	"strings"
 )
 
+const tcpPort = ":42069"
+
 func main() {
-	file, err := os.Open("messages.txt")
+	listener, err := net.Listen("tcp", tcpPort)
 	if err != nil {
-		fmt.Printf("error opening file: %v", err)
+		fmt.Printf("error opening connection: %v", err)
+		return
 	}
-	defer file.Close()
+	defer listener.Close()
 
-	linesChan := getLinesChannel(file)
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Printf("error: %v", err)
+			break
+		}
 
-	for line := range linesChan {
-		fmt.Println("read:", line)
+		fmt.Print("Network connection accepted.\n")
+		linesChan := getLinesChannel(conn)
+
+		for line := range linesChan {
+			fmt.Printf("%v\n", line)
+		}
+		fmt.Print("Connection closed.")
 	}
 }
 
