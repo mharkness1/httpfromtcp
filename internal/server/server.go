@@ -1,24 +1,30 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net"
 	"sync/atomic"
+
+	"github.com/mharkness1/httpfromtcp/internal/request"
+	"github.com/mharkness1/httpfromtcp/internal/response"
 )
 
 type Server struct {
 	listener net.Listener
 	closed   atomic.Bool
+	handler  HandlerFunc
 }
 
-func Serve(port int) (*Server, error) {
+func Serve(port int, handler HandlerFunc) (*Server, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}
 	s := &Server{
 		listener: listener,
+		handler:  handler,
 	}
 	go s.listen()
 	return s, nil
@@ -48,10 +54,25 @@ func (s *Server) listen() {
 
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
-	response := "HTTP/1.1 200 OK\r\n" +
-		"Content-Type: text/plain\r\n" +
-		"\r\n" +
-		"Hello World!\n"
-	conn.Write([]byte(response))
+	req, err := request.RequestFromReader(conn)
+	if err != nil {
+		handlerErr := &HandlerError{
+			StatusCode: response.StatusCodeBadRequest,
+			Message:    err.Error(),
+		}
+		handlerErr.HandlerErrorWriter(conn)
+		return
+	}
+	buf := bytes.NewBuffer([]byte{})
+	handlerError := s.handler(buf, req)
+	if handlerError != nil {
+		handlerError.HandlerErrorWriter(conn)
+		return
+	}
+	b := buf.Bytes()
+	response.WriteStatusLine(conn, response.StatusCodeSuccess)
+	headers := response.GetDefaultHeaders(len(b))
+	response.WriteHeaders(conn, headers)
+	conn.Write(b)
 	return
 }
