@@ -74,3 +74,8 @@ func isTokenChar(c byte) bool {
 	}
 	return slices.Contains(tokenChars, c)
 }
+
+func (h Headers) Override(key, value string) {
+	key = strings.ToLower(key)
+	h[key] = value
+}
