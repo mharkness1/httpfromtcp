@@ -38,7 +38,7 @@ func handler(w io.Writer, req *request.Request) *server.HandlerError {
 	if req.RequestLine.RequestTarget == "/myproblem" {
 		return &server.HandlerError{
 			StatusCode: response.StatusCodeInternalServerError,
-			Message:    "Whoopsie, my bad\n",
+			Message:    "Woopsie, my bad\n",
 		}
 	}
 	w.Write([]byte("All good, frfr\n"))
