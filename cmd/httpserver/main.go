@@ -1,11 +1,17 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/mharkness1/httpfromtcp/internal/headers"
 	"github.com/mharkness1/httpfromtcp/internal/request"
 	"github.com/mharkness1/httpfromtcp/internal/response"
 	"github.com/mharkness1/httpfromtcp/internal/server"
@@ -28,6 +34,10 @@ func main() {
 }
 
 func handler(w *response.Writer, req *request.Request) {
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
+		proxyHandler(w, req)
+		return
+	}
 	if req.RequestLine.RequestTarget == "/yourproblem" {
 		handler400(w, req)
 		return
@@ -66,6 +76,63 @@ func handler200(w *response.Writer, _ *request.Request) {
 	h.Override("Content-Type", "text/html")
 	w.WriteHeaders(h)
 	w.WriteBody(body)
+}
+
+func proxyHandler(w *response.Writer, req *request.Request) {
+	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+	url := "https://httpbin.org/" + target
+	fmt.Println("Proxying to", url)
+	resp, err := http.Get(url)
+	if err != nil {
+		handler500(w, req)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteStatusLine(response.StatusCodeSuccess)
+	h := response.GetDefaultHeaders(0)
+	h.Override("Transfer-Encoding", "chunked")
+	h.Override("Trailer", "X-Content-SHA256, X-Content-Length")
+	h.Remove("Content-Length")
+	w.WriteHeaders(h)
+
+	fullBody := make([]byte, 0)
+
+	const maxChunkSize = 1024
+	buffer := make([]byte, maxChunkSize)
+	for {
+		n, err := resp.Body.Read(buffer)
+		fmt.Println("Read", n, "bytes")
+		if n > 0 {
+			_, err = w.WriteChunkedBody(buffer[:n])
+			if err != nil {
+				fmt.Println("error writing chunked body:", err)
+				break
+			}
+			fullBody = append(fullBody, buffer[:n]...)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Println("Error reading resp body:", err)
+			break
+		}
+	}
+	_, err = w.WriteChunkedBodyDone()
+	if err != nil {
+		fmt.Println("Error writing chunked body end:", err)
+	}
+	trailers := headers.NewHeaders()
+	sha256 := fmt.Sprintf("%x", sha256.Sum256(fullBody))
+	trailers.Override("X-Conetnt-SHA256", sha256)
+	trailers.Override("X-Content-Length", fmt.Sprintf("%d", len(fullBody)))
+	err = w.WriteTrailers(trailers)
+	if err != nil {
+		fmt.Println("Error writing trailers:", err)
+	}
+	fmt.Println("Trailers written")
+
 }
 
 const http400 string = `<html>
