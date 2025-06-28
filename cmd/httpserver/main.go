@@ -92,7 +92,7 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 	w.WriteStatusLine(response.StatusCodeSuccess)
 	h := response.GetDefaultHeaders(0)
 	h.Override("Transfer-Encoding", "chunked")
-	h.Override("Trailer", "X-Content-SHA256, X-Content-Length")
+	h.Override("Trailer", "X-Content-Sha256, X-Content-Length")
 	h.Remove("Content-Length")
 	w.WriteHeaders(h)
 
@@ -124,15 +124,18 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 		fmt.Println("Error writing chunked body end:", err)
 	}
 	trailers := headers.NewHeaders()
-	sha256 := fmt.Sprintf("%x", sha256.Sum256(fullBody))
-	trailers.Override("X-Conetnt-SHA256", sha256)
-	trailers.Override("X-Content-Length", fmt.Sprintf("%d", len(fullBody)))
+
+	sha256Hash := fmt.Sprintf("%x", sha256.Sum256(fullBody))
+
+	trailers["X-Content-Sha256"] = sha256Hash
+	trailers["X-Content-Length"] = fmt.Sprintf("%d", len(fullBody))
+
 	err = w.WriteTrailers(trailers)
 	if err != nil {
-		fmt.Println("Error writing trailers:", err)
+		fmt.Printf("Error writing trailers: %v\n", err)
+	} else {
+		fmt.Printf("WriteTrailers returned successfully\n")
 	}
-	fmt.Println("Trailers written")
-
 }
 
 const http400 string = `<html>

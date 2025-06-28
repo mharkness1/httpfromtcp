@@ -18,13 +18,20 @@ func (w *Writer) WriteTrailers(h headers.Headers) error {
 	if w.writerState != writerStateTrailers {
 		return fmt.Errorf("writer in wrong state: %d", w.writerState)
 	}
-	defer func() { w.writerState = writerStateBody }()
 	for k, v := range h {
-		_, err := w.writer.Write([]byte(fmt.Sprintf("%s: %s\r\n", k, v)))
+		line := fmt.Sprintf("%s: %s\r\n", k, v)
+		_, err := w.writer.Write([]byte(line))
 		if err != nil {
+			fmt.Printf("Error writing trailer line: %v\n", err)
 			return err
 		}
 	}
 	_, err := w.writer.Write([]byte("\r\n"))
-	return err
+	if err != nil {
+		fmt.Printf("Error writing final CRLF: %v\n", err)
+		return err
+	}
+	w.writerState = writerStateBody
+	fmt.Printf("WriteTrailers completed successfully\n")
+	return nil
 }
